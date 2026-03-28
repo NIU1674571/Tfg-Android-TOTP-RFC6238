@@ -22,13 +22,14 @@ import com.example.totp.model.TotpDatabase
 import com.example.totp.totp.TotpGenerator
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-
+import com.example.totp.totp.SecureStorage
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TotpMainScreen() {
     val context = LocalContext.current
     val database = remember { TotpDatabase.getDatabase(context) }
     val dao = remember { database.totpAccountDao() }
+    val secureStorage = remember { SecureStorage(context) }
     val coroutineScope = rememberCoroutineScope()
 
     // Obtener las cuentas de Room (Flow → State)
@@ -51,12 +52,18 @@ fun TotpMainScreen() {
             val newCodes = mutableMapOf<Int, String>()
             for (account in currentAccounts) {
                 try {
-                    val gen = TotpGenerator(
-                        period = account.period,
-                        digits = account.digits,
-                        algorithm = account.algorithm
-                    )
-                    newCodes[account.id] = gen.generateCode(account.secretKey)
+                    // Obtener la SecretKey del almacenamiento cifrado
+                    val secretKey = secureStorage.getSecretKey(account.id)
+                    if (secretKey != null) {
+                        val gen = TotpGenerator(
+                            period = account.period,
+                            digits = account.digits,
+                            algorithm = account.algorithm
+                        )
+                        newCodes[account.id] = gen.generateCode(secretKey)
+                    } else {
+                        newCodes[account.id] = "NO KEY"
+                    }
                 } catch (e: Exception) {
                     newCodes[account.id] = "ERROR"
                 }
@@ -73,13 +80,21 @@ fun TotpMainScreen() {
             onDismiss = { showAddDialog = false },
             onAdd = { name, issuer, secretKey ->
                 coroutineScope.launch {
-                    dao.insertAccount(
-                        TotpAccount(
-                            name = name,
-                            issuer = issuer,
-                            secretKey = secretKey
-                        )
+                    // 1. Guardar la cuenta en Room (sin SecretKey)
+                    val account = TotpAccount(
+                        name = name,
+                        issuer = issuer
                     )
+                    dao.insertAccount(account)
+
+                    // 2. Obtener el id generado por Room
+                    val allAccounts = dao.getAllAccountsOnce()
+                    val savedAccount = allAccounts.lastOrNull()
+
+                    // 3. Guardar la SecretKey cifrada
+                    if (savedAccount != null) {
+                        secureStorage.saveSecretKey(savedAccount.id, secretKey)
+                    }
                 }
                 showAddDialog = false
             }
@@ -131,6 +146,7 @@ fun TotpMainScreen() {
                         secondsRemaining = secondsRemaining,
                         onDelete = {
                             coroutineScope.launch {
+                                secureStorage.deleteSecretKey(account.id)  // ← AÑADIR
                                 dao.deleteAccount(account)
                             }
                         }

@@ -11,8 +11,10 @@ import androidx.room.RoomDatabase
  *
  * Se usa el patrón Singleton para que solo exista una instancia
  * de la base de datos en toda la aplicación.
+ *
+ * UNIR 1+2
  */
-@Database(entities = [TotpAccount::class], version = 1, exportSchema = false)
+@Database(entities = [TotpAccount::class], version = 2, exportSchema = false)
 abstract class TotpDatabase : RoomDatabase() {
 
     abstract fun totpAccountDao(): TotpAccountDao
@@ -27,7 +29,9 @@ abstract class TotpDatabase : RoomDatabase() {
                     context.applicationContext,
                     TotpDatabase::class.java,
                     "totp_database"
-                ).build()
+                )
+                    .fallbackToDestructiveMigration()
+                    .build()
                 INSTANCE = instance
                 instance
             }
