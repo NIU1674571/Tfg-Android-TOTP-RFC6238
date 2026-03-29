@@ -19,10 +19,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.totp.model.TotpAccount
 import com.example.totp.model.TotpDatabase
+import com.example.totp.totp.SecureStorage
 import com.example.totp.totp.TotpGenerator
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import com.example.totp.totp.SecureStorage
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TotpMainScreen() {
@@ -42,6 +43,9 @@ fun TotpMainScreen() {
     // Estado del diálogo para añadir cuenta
     var showAddDialog by remember { mutableStateOf(false) }
 
+    // Estado de la pantalla del escáner QR
+    var showQrScanner by remember { mutableStateOf(false) }
+
     // Temporizador
     LaunchedEffect(Unit) {
         while (true) {
@@ -52,7 +56,6 @@ fun TotpMainScreen() {
             val newCodes = mutableMapOf<Int, String>()
             for (account in currentAccounts) {
                 try {
-                    // Obtener la SecretKey del almacenamiento cifrado
                     val secretKey = secureStorage.getSecretKey(account.id)
                     if (secretKey != null) {
                         val gen = TotpGenerator(
@@ -74,24 +77,21 @@ fun TotpMainScreen() {
         }
     }
 
-    // Diálogo para añadir cuenta
+    // Diálogo para añadir cuenta manualmente
     if (showAddDialog) {
         AddAccountDialog(
             onDismiss = { showAddDialog = false },
             onAdd = { name, issuer, secretKey ->
                 coroutineScope.launch {
-                    // 1. Guardar la cuenta en Room (sin SecretKey)
                     val account = TotpAccount(
                         name = name,
                         issuer = issuer
                     )
                     dao.insertAccount(account)
 
-                    // 2. Obtener el id generado por Room
                     val allAccounts = dao.getAllAccountsOnce()
                     val savedAccount = allAccounts.lastOrNull()
 
-                    // 3. Guardar la SecretKey cifrada
                     if (savedAccount != null) {
                         secureStorage.saveSecretKey(savedAccount.id, secretKey)
                     }
@@ -99,6 +99,49 @@ fun TotpMainScreen() {
                 showAddDialog = false
             }
         )
+    }
+
+    // Pantalla del escáner QR
+    if (showQrScanner) {
+        QrScannerScreen(
+            onQrScanned = { otpData ->
+                // Validar que la SecretKey es Base32 válida antes de crear la cuenta
+                try {
+                    val decoded = com.example.totp.totp.Base32.decode(otpData.secretKey)
+                    if (decoded.isEmpty() || otpData.secretKey.isBlank()) {
+                        // No crear la cuenta, volver con error
+                        return@QrScannerScreen "QR inválido: la SecretKey está vacía o no es válida"
+                    }
+                    // Verificar que genera un código TOTP correctamente
+                    val generator = com.example.totp.totp.TotpGenerator()
+                    generator.generateCode(otpData.secretKey)
+
+                    // Si todo es válido, guardar la cuenta
+                    coroutineScope.launch {
+                        val account = TotpAccount(
+                            name = otpData.name,
+                            issuer = otpData.issuer,
+                            algorithm = otpData.algorithm,
+                            digits = otpData.digits,
+                            period = otpData.period
+                        )
+                        dao.insertAccount(account)
+
+                        val allAccounts = dao.getAllAccountsOnce()
+                        val savedAccount = allAccounts.lastOrNull()
+                        if (savedAccount != null) {
+                            secureStorage.saveSecretKey(savedAccount.id, otpData.secretKey)
+                        }
+                    }
+                    showQrScanner = false
+                    return@QrScannerScreen null // Sin error
+                } catch (e: Exception) {
+                    return@QrScannerScreen "QR inválido: la SecretKey no es Base32 válida (solo A-Z y 2-7)"
+                }
+            },
+            onBack = { showQrScanner = false }
+        )
+        return
     }
 
     Scaffold(
@@ -111,10 +154,34 @@ fun TotpMainScreen() {
             )
         },
         floatingActionButton = {
-            FloatingActionButton(
-                onClick = { showAddDialog = true }
-            ) {
-                Icon(Icons.Default.Add, contentDescription = "Añadir cuenta")
+            var showMenu by remember { mutableStateOf(false) }
+
+            Box {
+                FloatingActionButton(
+                    onClick = { showMenu = true }
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = "Añadir cuenta")
+                }
+
+                DropdownMenu(
+                    expanded = showMenu,
+                    onDismissRequest = { showMenu = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Introducir manualmente") },
+                        onClick = {
+                            showMenu = false
+                            showAddDialog = true
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Escanear QR") },
+                        onClick = {
+                            showMenu = false
+                            showQrScanner = true
+                        }
+                    )
+                }
             }
         }
     ) { padding ->
@@ -146,7 +213,7 @@ fun TotpMainScreen() {
                         secondsRemaining = secondsRemaining,
                         onDelete = {
                             coroutineScope.launch {
-                                secureStorage.deleteSecretKey(account.id)  // ← AÑADIR
+                                secureStorage.deleteSecretKey(account.id)
                                 dao.deleteAccount(account)
                             }
                         }
@@ -194,7 +261,6 @@ fun TotpCard(
                 .fillMaxWidth()
                 .padding(16.dp)
         ) {
-            // Fila superior: emisor + botón eliminar + temporizador
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -309,14 +375,12 @@ fun AddAccountDialog(
                         errorMessage = "Todos los campos son obligatorios"
                         showError = true
                     } else {
-                        // Validar que la SecretKey es Base32 válida
                         try {
                             val decoded = com.example.totp.totp.Base32.decode(secretKey)
                             if (decoded.isEmpty()) {
                                 errorMessage = "La SecretKey no es válida"
                                 showError = true
                             } else {
-                                // Verificar que genera un código TOTP correctamente
                                 val generator = com.example.totp.totp.TotpGenerator()
                                 generator.generateCode(secretKey)
                                 onAdd(name, issuer, secretKey)
