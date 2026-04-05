@@ -2,9 +2,11 @@ package com.example.totp.ui
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
@@ -15,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.totp.model.TotpAccount
@@ -23,6 +26,7 @@ import com.example.totp.totp.SecureStorage
 import com.example.totp.totp.TotpGenerator
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import androidx.compose.material.icons.filled.Settings
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -33,27 +37,31 @@ fun TotpMainScreen() {
     val secureStorage = remember { SecureStorage(context) }
     val coroutineScope = rememberCoroutineScope()
 
-    // Obtener las cuentas de Room (Flow → State)
     val accounts by dao.getAllAccounts().collectAsState(initial = emptyList())
 
-    // Estado del temporizador
-    var secondsRemaining by remember { mutableIntStateOf(30) }
     var codes by remember { mutableStateOf(mapOf<Int, String>()) }
+    var secondsMap by remember { mutableStateOf(mapOf<Int, Int>()) }
 
-    // Estado del diálogo para añadir cuenta
     var showAddDialog by remember { mutableStateOf(false) }
-
-    // Estado de la pantalla del escáner QR
     var showQrScanner by remember { mutableStateOf(false) }
 
-    // Temporizador
+    var showEditDialog by remember { mutableStateOf(false) }
+    var editAccountId by remember { mutableIntStateOf(0) }
+    var editAccountName by remember { mutableStateOf("") }
+    var editAccountIssuer by remember { mutableStateOf("") }
+    var editAccountAlgorithm by remember { mutableStateOf("HmacSHA1") }
+    var editAccountDigits by remember { mutableIntStateOf(6) }
+    var editAccountPeriod by remember { mutableIntStateOf(30) }
+    var editAccountSecretKey by remember { mutableStateOf("") }
+
+    var showSettings by remember { mutableStateOf(false) }
+
+    // Temporizador - cada cuenta usa su propio periodo
     LaunchedEffect(Unit) {
         while (true) {
-            val generator = TotpGenerator()
-            secondsRemaining = generator.secondsRemaining()
-
             val currentAccounts = accounts
             val newCodes = mutableMapOf<Int, String>()
+            val newSeconds = mutableMapOf<Int, Int>()
             for (account in currentAccounts) {
                 try {
                     val secretKey = secureStorage.getSecretKey(account.id)
@@ -64,14 +72,18 @@ fun TotpMainScreen() {
                             algorithm = account.algorithm
                         )
                         newCodes[account.id] = gen.generateCode(secretKey)
+                        newSeconds[account.id] = gen.secondsRemaining()
                     } else {
                         newCodes[account.id] = "NO KEY"
+                        newSeconds[account.id] = 0
                     }
                 } catch (e: Exception) {
                     newCodes[account.id] = "ERROR"
+                    newSeconds[account.id] = 0
                 }
             }
             codes = newCodes
+            secondsMap = newSeconds
 
             delay(1000L)
         }
@@ -81,11 +93,14 @@ fun TotpMainScreen() {
     if (showAddDialog) {
         AddAccountDialog(
             onDismiss = { showAddDialog = false },
-            onAdd = { name, issuer, secretKey ->
+            onAdd = { name, issuer, secretKey, algorithm, digits, period ->
                 coroutineScope.launch {
                     val account = TotpAccount(
                         name = name,
-                        issuer = issuer
+                        issuer = issuer,
+                        algorithm = algorithm,
+                        digits = digits,
+                        period = period
                     )
                     dao.insertAccount(account)
 
@@ -101,22 +116,55 @@ fun TotpMainScreen() {
         )
     }
 
+    // Diálogo para editar cuenta
+    if (showEditDialog) {
+        EditAccountDialog(
+            name = editAccountName,
+            issuer = editAccountIssuer,
+            secretKey = editAccountSecretKey,
+            algorithm = editAccountAlgorithm,
+            digits = editAccountDigits,
+            period = editAccountPeriod,
+            onDismiss = { showEditDialog = false },
+            onSave = { name, issuer, secretKey, algorithm, digits, period ->
+                val id = editAccountId
+                coroutineScope.launch {
+                    val updatedAccount = TotpAccount(
+                        id = id,
+                        name = name,
+                        issuer = issuer,
+                        algorithm = algorithm,
+                        digits = digits,
+                        period = period
+                    )
+                    dao.updateAccount(updatedAccount)
+                    secureStorage.saveSecretKey(id, secretKey)
+                }
+                showEditDialog = false
+            }
+        )
+    }
+
+    // Pantalla de ajustes
+    if (showSettings) {
+        SettingsScreen(
+            onBack = { showSettings = false }
+        )
+        return
+    }
+
     // Pantalla del escáner QR
     if (showQrScanner) {
         QrScannerScreen(
             onQrScanned = { otpData ->
-                // Validar que la SecretKey es Base32 válida antes de crear la cuenta
                 try {
                     val decoded = com.example.totp.totp.Base32.decode(otpData.secretKey)
                     if (decoded.isEmpty() || otpData.secretKey.isBlank()) {
-                        // No crear la cuenta, volver con error
                         return@QrScannerScreen "QR inválido: la SecretKey está vacía o no es válida"
                     }
-                    // Verificar que genera un código TOTP correctamente
                     val generator = com.example.totp.totp.TotpGenerator()
                     generator.generateCode(otpData.secretKey)
 
-                    // Si todo es válido, guardar la cuenta
                     coroutineScope.launch {
                         val account = TotpAccount(
                             name = otpData.name,
@@ -134,7 +182,7 @@ fun TotpMainScreen() {
                         }
                     }
                     showQrScanner = false
-                    return@QrScannerScreen null // Sin error
+                    return@QrScannerScreen null
                 } catch (e: Exception) {
                     return@QrScannerScreen "QR inválido: la SecretKey no es Base32 válida (solo A-Z y 2-7)"
                 }
@@ -148,6 +196,11 @@ fun TotpMainScreen() {
         topBar = {
             TopAppBar(
                 title = { Text("TOTP Authenticator") },
+                actions = {
+                    IconButton(onClick = { showSettings = true }) {
+                        Icon(Icons.Default.Settings, contentDescription = "Ajustes")
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer
                 )
@@ -210,12 +263,22 @@ fun TotpMainScreen() {
                     TotpCard(
                         account = account,
                         code = codes[account.id] ?: "------",
-                        secondsRemaining = secondsRemaining,
+                        secondsRemaining = secondsMap[account.id] ?: 0,
                         onDelete = {
                             coroutineScope.launch {
                                 secureStorage.deleteSecretKey(account.id)
                                 dao.deleteAccount(account)
                             }
+                        },
+                        onClick = {
+                            editAccountId = account.id
+                            editAccountName = account.name
+                            editAccountIssuer = account.issuer
+                            editAccountAlgorithm = account.algorithm
+                            editAccountDigits = account.digits
+                            editAccountPeriod = account.period
+                            editAccountSecretKey = secureStorage.getSecretKey(account.id) ?: ""
+                            showEditDialog = true
                         }
                     )
                 }
@@ -229,7 +292,8 @@ fun TotpCard(
     account: TotpAccount,
     code: String,
     secondsRemaining: Int,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onClick: () -> Unit
 ) {
     val progress by animateFloatAsState(
         targetValue = secondsRemaining / account.period.toFloat(),
@@ -253,7 +317,9 @@ fun TotpCard(
     )
 
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() },
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(
@@ -325,13 +391,21 @@ fun TotpCard(
 @Composable
 fun AddAccountDialog(
     onDismiss: () -> Unit,
-    onAdd: (name: String, issuer: String, secretKey: String) -> Unit
+    onAdd: (name: String, issuer: String, secretKey: String, algorithm: String, digits: Int, period: Int) -> Unit
 ) {
     var name by remember { mutableStateOf("") }
     var issuer by remember { mutableStateOf("") }
     var secretKey by remember { mutableStateOf("") }
     var showError by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf("") }
+
+    var selectedAlgorithm by remember { mutableStateOf("HmacSHA1") }
+    var digitsText by remember { mutableStateOf("6") }
+    var periodText by remember { mutableStateOf("30") }
+
+    var expandedAlgorithm by remember { mutableStateOf(false) }
+
+    val algorithms = listOf("HmacSHA1", "HmacSHA256", "HmacSHA512")
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -359,6 +433,72 @@ fun AddAccountDialog(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
+
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    OutlinedTextField(
+                        value = when (selectedAlgorithm) {
+                            "HmacSHA1" -> "SHA1"
+                            "HmacSHA256" -> "SHA256"
+                            "HmacSHA512" -> "SHA512"
+                            else -> "SHA1"
+                        },
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Algoritmo") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Box(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .clickable { expandedAlgorithm = true }
+                    )
+                    DropdownMenu(
+                        expanded = expandedAlgorithm,
+                        onDismissRequest = { expandedAlgorithm = false }
+                    ) {
+                        algorithms.forEach { algo ->
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        when (algo) {
+                                            "HmacSHA1" -> "SHA1"
+                                            "HmacSHA256" -> "SHA256"
+                                            "HmacSHA512" -> "SHA512"
+                                            else -> algo
+                                        }
+                                    )
+                                },
+                                onClick = {
+                                    selectedAlgorithm = algo
+                                    expandedAlgorithm = false
+                                }
+                            )
+                        }
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = digitsText,
+                        onValueChange = { digitsText = it.filter { c -> c.isDigit() } },
+                        label = { Text("Dígitos") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.weight(1f)
+                    )
+                    OutlinedTextField(
+                        value = periodText,
+                        onValueChange = { periodText = it.filter { c -> c.isDigit() } },
+                        label = { Text("Periodo (s)") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
                 if (showError) {
                     Text(
                         text = errorMessage,
@@ -371,8 +511,17 @@ fun AddAccountDialog(
         confirmButton = {
             TextButton(
                 onClick = {
-                    if (name.isBlank() || issuer.isBlank() || secretKey.isBlank()) {
-                        errorMessage = "Todos los campos son obligatorios"
+                    val digits = digitsText.toIntOrNull()
+                    val period = periodText.toIntOrNull()
+
+                    if (secretKey.isBlank()) {
+                        errorMessage = "La SecretKey es obligatoria"
+                        showError = true
+                    } else if (digits == null || digits < 4 || digits > 10) {
+                        errorMessage = "Los dígitos deben ser entre 4 y 10"
+                        showError = true
+                    } else if (period == null || period < 1 || period > 300) {
+                        errorMessage = "El periodo debe ser entre 1 y 300 segundos"
                         showError = true
                     } else {
                         try {
@@ -381,9 +530,13 @@ fun AddAccountDialog(
                                 errorMessage = "La SecretKey no es válida"
                                 showError = true
                             } else {
-                                val generator = com.example.totp.totp.TotpGenerator()
+                                val generator = com.example.totp.totp.TotpGenerator(
+                                    digits = digits,
+                                    period = period,
+                                    algorithm = selectedAlgorithm
+                                )
                                 generator.generateCode(secretKey)
-                                onAdd(name, issuer, secretKey)
+                                onAdd(name, issuer, secretKey, selectedAlgorithm, digits, period)
                             }
                         } catch (e: Exception) {
                             errorMessage = "La SecretKey no es Base32 válida (solo A-Z y 2-7)"
@@ -393,6 +546,180 @@ fun AddAccountDialog(
                 }
             ) {
                 Text("Añadir")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancelar")
+            }
+        }
+    )
+}
+
+@Composable
+fun EditAccountDialog(
+    name: String,
+    issuer: String,
+    secretKey: String,
+    algorithm: String,
+    digits: Int,
+    period: Int,
+    onDismiss: () -> Unit,
+    onSave: (name: String, issuer: String, secretKey: String, algorithm: String, digits: Int, period: Int) -> Unit
+) {
+    var editName by remember { mutableStateOf(name) }
+    var editIssuer by remember { mutableStateOf(issuer) }
+    var editSecretKey by remember { mutableStateOf(secretKey) }
+    var showError by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf("") }
+
+    var selectedAlgorithm by remember { mutableStateOf(algorithm) }
+    var digitsText by remember { mutableStateOf(digits.toString()) }
+    var periodText by remember { mutableStateOf(period.toString()) }
+
+    var expandedAlgorithm by remember { mutableStateOf(false) }
+
+    val algorithms = listOf("HmacSHA1", "HmacSHA256", "HmacSHA512")
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Editar cuenta") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = editIssuer,
+                    onValueChange = { editIssuer = it },
+                    label = { Text("Servicio") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = editName,
+                    onValueChange = { editName = it },
+                    label = { Text("Cuenta") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = editSecretKey,
+                    onValueChange = { editSecretKey = it.uppercase().replace(" ", "") },
+                    label = { Text("SecretKey (Base32)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    OutlinedTextField(
+                        value = when (selectedAlgorithm) {
+                            "HmacSHA1" -> "SHA1"
+                            "HmacSHA256" -> "SHA256"
+                            "HmacSHA512" -> "SHA512"
+                            else -> "SHA1"
+                        },
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Algoritmo") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Box(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .clickable { expandedAlgorithm = true }
+                    )
+                    DropdownMenu(
+                        expanded = expandedAlgorithm,
+                        onDismissRequest = { expandedAlgorithm = false }
+                    ) {
+                        algorithms.forEach { algo ->
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        when (algo) {
+                                            "HmacSHA1" -> "SHA1"
+                                            "HmacSHA256" -> "SHA256"
+                                            "HmacSHA512" -> "SHA512"
+                                            else -> algo
+                                        }
+                                    )
+                                },
+                                onClick = {
+                                    selectedAlgorithm = algo
+                                    expandedAlgorithm = false
+                                }
+                            )
+                        }
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = digitsText,
+                        onValueChange = { digitsText = it.filter { c -> c.isDigit() } },
+                        label = { Text("Dígitos") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.weight(1f)
+                    )
+                    OutlinedTextField(
+                        value = periodText,
+                        onValueChange = { periodText = it.filter { c -> c.isDigit() } },
+                        label = { Text("Periodo (s)") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                if (showError) {
+                    Text(
+                        text = errorMessage,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    val parsedDigits = digitsText.toIntOrNull()
+                    val parsedPeriod = periodText.toIntOrNull()
+
+                    if (secretKey.isBlank()) {
+                        errorMessage = "La SecretKey es obligatoria"
+                        showError = true
+                    } else if (parsedDigits == null || parsedDigits < 4 || parsedDigits > 10) {
+                        errorMessage = "Los dígitos deben ser entre 4 y 10"
+                        showError = true
+                    } else if (parsedPeriod == null || parsedPeriod < 1 || parsedPeriod > 300) {
+                        errorMessage = "El periodo debe ser entre 1 y 300 segundos"
+                        showError = true
+                    } else {
+                        try {
+                            val decoded = com.example.totp.totp.Base32.decode(editSecretKey)
+                            if (decoded.isEmpty()) {
+                                errorMessage = "La SecretKey no es válida"
+                                showError = true
+                            } else {
+                                val generator = com.example.totp.totp.TotpGenerator(
+                                    digits = parsedDigits,
+                                    period = parsedPeriod,
+                                    algorithm = selectedAlgorithm
+                                )
+                                generator.generateCode(editSecretKey)
+                                onSave(editName, editIssuer, editSecretKey, selectedAlgorithm, parsedDigits, parsedPeriod)
+                            }
+                        } catch (e: Exception) {
+                            errorMessage = "La SecretKey no es Base32 válida (solo A-Z y 2-7)"
+                            showError = true
+                        }
+                    }
+                }
+            ) {
+                Text("Guardar")
             }
         },
         dismissButton = {

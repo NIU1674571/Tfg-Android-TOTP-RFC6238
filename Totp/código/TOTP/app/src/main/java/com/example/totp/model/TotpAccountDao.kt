@@ -34,4 +34,8 @@ interface TotpAccountDao {
     // Necesario para obtener el id generado tras insertar
     @Query("SELECT * FROM totp_accounts ORDER BY id ASC")
     suspend fun getAllAccountsOnce(): List<TotpAccount>
+
+    // Actualizar una cuenta existente
+    @Update
+    suspend fun updateAccount(account: TotpAccount)
 }
