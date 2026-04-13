@@ -8,13 +8,8 @@ import androidx.room.RoomDatabase
 /**
  * Base de datos Room para la aplicación TOTP.
  * Contiene una sola tabla: totp_accounts.
- *
- * Se usa el patrón Singleton para que solo exista una instancia
- * de la base de datos en toda la aplicación.
- *
- * UNIR 1+2
  */
-@Database(entities = [TotpAccount::class], version = 2, exportSchema = false)
+@Database(entities = [TotpAccount::class], version = 3, exportSchema = false)
 abstract class TotpDatabase : RoomDatabase() {
 
     abstract fun totpAccountDao(): TotpAccountDao

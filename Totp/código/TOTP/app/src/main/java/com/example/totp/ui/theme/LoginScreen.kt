@@ -18,6 +18,8 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import com.example.totp.totp.AuthStorage
+import com.example.totp.totp.ThemeStorage
+import androidx.compose.ui.graphics.Color
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -35,6 +37,13 @@ fun LoginScreen(
     var confirmPassword by remember { mutableStateOf("") }
     var showError by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf("") }
+    val themeStorage = remember { ThemeStorage(context) }
+
+    val defaultBarColor = MaterialTheme.colorScheme.primaryContainer
+    val topBarColor = remember(themeStorage.getTopBarColor()) {
+        val hex = themeStorage.getTopBarColor()
+        if (hex == "DEFAULT") defaultBarColor else hexToColor(hex)
+    }
 
     // Intentar biometría al iniciar si está activada
     LaunchedEffect(Unit) {
@@ -44,11 +53,15 @@ fun LoginScreen(
     }
 
     Scaffold(
+        containerColor = remember(themeStorage.getBackgroundColor()) {
+            val hex = themeStorage.getBackgroundColor()
+            if (hex == "DEFAULT") Color.Unspecified else hexToColor(hex)
+        },
         topBar = {
             TopAppBar(
                 title = { Text("TOTP Authenticator") },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer
+                    containerColor = topBarColor
                 )
             )
         }

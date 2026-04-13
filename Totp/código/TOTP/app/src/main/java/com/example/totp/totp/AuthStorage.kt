@@ -73,6 +73,20 @@ class AuthStorage(context: Context) {
     }
 
     /**
+     * Comprueba si el usuario ya ha visto el tutorial.
+     */
+    fun hasSeenTutorial(): Boolean {
+        return authPrefs.getBoolean("tutorial_seen", false)
+    }
+
+    /**
+     * Marca que el usuario ya ha visto el tutorial.
+     */
+    fun setTutorialSeen(seen: Boolean) {
+        authPrefs.edit().putBoolean("tutorial_seen", seen).apply()
+    }
+
+    /**
      * Hashea la contraseña con SHA-256.
      */
     private fun hashPassword(password: String): String {

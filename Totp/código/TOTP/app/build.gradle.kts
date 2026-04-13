@@ -51,6 +51,9 @@ dependencies {
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.material.icons.extended)
 
+    // Coil (cargar imágenes en Compose)
+    implementation(libs.coil.compose)
+
     // Jetpack Security (cifrado)
     implementation(libs.androidx.security.crypto)
 

@@ -1,4 +1,4 @@
-package com.example.totp.ui
+package com.example.totp.ui.theme
 
 import android.Manifest
 import android.content.pm.PackageManager
