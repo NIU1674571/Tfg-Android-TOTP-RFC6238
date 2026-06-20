@@ -11,7 +11,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.fragment.app.FragmentActivity
 import com.example.totp.totp.AuthStorage
 import com.example.totp.totp.ThemeStorage
+import com.example.totp.ui.theme.HomeScreen
 import com.example.totp.ui.theme.LoginScreen
+import com.example.totp.ui.theme.PasswordManagerScreen
 import com.example.totp.ui.theme.TotpMainScreen
 import com.example.totp.ui.theme.TOTPTheme
 
@@ -53,29 +55,68 @@ fun AppWithTheme() {
     }
 }
 
+/**
+ * Pantallas posibles de la aplicación.
+ * Se usa un enum en lugar de Navigation Compose para mantener
+ * la coherencia con la navegación existente del módulo TOTP.
+ */
+enum class Screen {
+    LOGIN,
+    HOME,
+    TOTP,
+    PASSWORD_MANAGER
+}
+
 @Composable
 fun AppNavigation(onThemeChanged: () -> Unit) {
     val context = LocalContext.current
     val authStorage = remember { AuthStorage(context) }
 
-    var isLoggedIn by remember { mutableStateOf(false) }
+    var currentScreen by remember { mutableStateOf(Screen.LOGIN) }
     var showTutorialOnLogin by remember { mutableStateOf(false) }
 
-    if (isLoggedIn) {
-        TotpMainScreen(
-            onThemeChanged = onThemeChanged,
-            showTutorialOnStart = showTutorialOnLogin,
-            onTutorialShown = { showTutorialOnLogin = false }
-        )
-    } else {
-        LoginScreen(
-            onLoginSuccess = {
-                isLoggedIn = true
-                if (!authStorage.hasSeenTutorial()) {
-                    showTutorialOnLogin = true
-                    authStorage.setTutorialSeen(true)
+    when (currentScreen) {
+        Screen.LOGIN -> {
+            LoginScreen(
+                onLoginSuccess = {
+                    if (!authStorage.hasSeenTutorial()) {
+                        showTutorialOnLogin = true
+                        authStorage.setTutorialSeen(true)
+                    }
+                    currentScreen = Screen.HOME
                 }
-            }
-        )
+            )
+        }
+
+        Screen.HOME -> {
+            HomeScreen(
+                onNavigateToTotp = {
+                    currentScreen = Screen.TOTP
+                },
+                onNavigateToPasswordManager = {
+                    currentScreen = Screen.PASSWORD_MANAGER
+                }
+            )
+        }
+
+        Screen.TOTP -> {
+            TotpMainScreen(
+                onThemeChanged = onThemeChanged,
+                showTutorialOnStart = showTutorialOnLogin,
+                onTutorialShown = { showTutorialOnLogin = false },
+                onNavigateHome = {
+                    currentScreen = Screen.HOME
+                }
+            )
+        }
+
+        Screen.PASSWORD_MANAGER -> {
+            PasswordManagerScreen(
+                onBack = {
+                    currentScreen = Screen.HOME
+                },
+                onThemeChanged = onThemeChanged
+            )
+        }
     }
 }

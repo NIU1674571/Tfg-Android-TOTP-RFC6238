@@ -26,7 +26,7 @@ fun TutorialOverlay(
     val steps = listOf(
         // Paso 0: Bienvenida
         TutorialInfo(
-            message = "¡Bienvenido a TOTP Authenticator!\n\nTe guiaremos paso a paso para crear tu primera cuenta.",
+            message = "¡Bienvenido a Autenticador TOTP!\n\nTe guiaremos paso a paso para crear tu primera cuenta.",
             buttonText = "Empezar",
             position = MessagePosition.CENTER
         ),

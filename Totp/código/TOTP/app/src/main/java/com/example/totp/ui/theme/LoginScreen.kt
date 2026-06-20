@@ -59,7 +59,7 @@ fun LoginScreen(
         },
         topBar = {
             TopAppBar(
-                title = { Text("TOTP Authenticator") },
+                title = { Text("TOTP") },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = topBarColor
                 )
@@ -199,7 +199,7 @@ private fun showBiometricPrompt(activity: FragmentActivity, onSuccess: () -> Uni
     }
 
     val promptInfo = BiometricPrompt.PromptInfo.Builder()
-        .setTitle("TOTP Authenticator")
+        .setTitle("TOTP")
         .setSubtitle("Inicia sesión con tu huella o cara")
         .setAllowedAuthenticators(
             BiometricManager.Authenticators.BIOMETRIC_STRONG or

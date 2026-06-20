@@ -34,7 +34,7 @@ fun TutorialScreen(
     val pages = listOf(
         TutorialPage(
             icon = Icons.Default.Lock,
-            title = "Bienvenido a TOTP Authenticator",
+            title = "Bienvenido a Autenticador TOTP",
             description = "Tu app de autenticación de dos factores (2FA). " +
                     "Genera códigos temporales para proteger tus cuentas online."
         ),

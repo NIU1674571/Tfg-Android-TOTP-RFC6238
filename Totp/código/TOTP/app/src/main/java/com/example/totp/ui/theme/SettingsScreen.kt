@@ -127,7 +127,7 @@ fun SettingsScreen(
                             style = MaterialTheme.typography.titleMedium
                         )
                         Text(
-                            text = "Usar huella o reconocimiento facial para iniciar sesión",
+                            text = "Usar huella para iniciar sesión",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

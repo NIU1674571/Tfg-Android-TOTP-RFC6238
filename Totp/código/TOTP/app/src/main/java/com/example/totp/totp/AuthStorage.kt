@@ -73,17 +73,31 @@ class AuthStorage(context: Context) {
     }
 
     /**
-     * Comprueba si el usuario ya ha visto el tutorial.
+     * Comprueba si el usuario ya ha visto el tutorial del módulo TOTP.
      */
     fun hasSeenTutorial(): Boolean {
         return authPrefs.getBoolean("tutorial_seen", false)
     }
 
     /**
-     * Marca que el usuario ya ha visto el tutorial.
+     * Marca que el usuario ya ha visto el tutorial del módulo TOTP.
      */
     fun setTutorialSeen(seen: Boolean) {
         authPrefs.edit().putBoolean("tutorial_seen", seen).apply()
+    }
+
+    /**
+     * Comprueba si el usuario ya ha visto el tutorial del Gestor de Contraseñas.
+     */
+    fun hasSeenPasswordManagerTutorial(): Boolean {
+        return authPrefs.getBoolean("password_manager_tutorial_seen", false)
+    }
+
+    /**
+     * Marca que el usuario ya ha visto el tutorial del Gestor de Contraseñas.
+     */
+    fun setPasswordManagerTutorialSeen(seen: Boolean) {
+        authPrefs.edit().putBoolean("password_manager_tutorial_seen", seen).apply()
     }
 
     /**

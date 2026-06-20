@@ -6,13 +6,23 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 
 /**
- * Base de datos Room para la aplicación TOTP.
- * Contiene una sola tabla: totp_accounts.
+ * Base de datos Room para la aplicación.
+ * Contiene dos tablas:
+ * - totp_accounts: cuentas TOTP para la verificación en dos pasos.
+ * - password_entries: credenciales del gestor de contraseñas.
+ *
+ * Versión 5: se añade el campo iconUri a password_entries
+ *            para soportar iconos personalizados.
  */
-@Database(entities = [TotpAccount::class], version = 3, exportSchema = false)
+@Database(
+    entities = [TotpAccount::class, PasswordEntry::class],
+    version = 5,
+    exportSchema = false
+)
 abstract class TotpDatabase : RoomDatabase() {
 
     abstract fun totpAccountDao(): TotpAccountDao
+    abstract fun passwordEntryDao(): PasswordEntryDao
 
     companion object {
         @Volatile

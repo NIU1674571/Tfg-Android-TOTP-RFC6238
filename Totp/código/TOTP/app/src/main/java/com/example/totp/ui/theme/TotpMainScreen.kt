@@ -46,7 +46,8 @@ import kotlinx.coroutines.launch
 fun TotpMainScreen(
     onThemeChanged: () -> Unit = {},
     showTutorialOnStart: Boolean = false,
-    onTutorialShown: () -> Unit = {}
+    onTutorialShown: () -> Unit = {},
+    onNavigateHome: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val database = remember { TotpDatabase.getDatabase(context) }
@@ -338,11 +339,19 @@ fun TotpMainScreen(
         return
     }
 
+    // Botón atrás del sistema: volver a Home
+    BackHandler { onNavigateHome() }
+
     Scaffold(
         containerColor = backgroundColor,
         topBar = {
             TopAppBar(
-                title = { Text("TOTP Authenticator") },
+                title = { Text("Autenticador TOTP") },
+                navigationIcon = {
+                    IconButton(onClick = onNavigateHome) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver")
+                    }
+                },
                 actions = {
                     IconButton(onClick = { 
                         showSettings = true 
